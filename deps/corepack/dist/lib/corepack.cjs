@@ -21677,7 +21677,7 @@ function String2(descriptor, ...args) {
 }
 
 // package.json
-var version = "0.34.2";
+var version = "0.34.3";
 
 // sources/Engine.ts
 var import_fs6 = __toESM(require("fs"));
@@ -21792,7 +21792,7 @@ var config_default = {
         package: "yarn"
       },
       transparent: {
-        default: "4.10.3+sha224.6020b3cdcdfbd7dbc24b7a7b75d58a249ce36068a8bf97d39aa8cc6d",
+        default: "4.11.0+sha224.209a3e277c6bbc03df6e4206fbfcb0c1621c27ecf0688f79a0c619f0",
         commands: [
           [
             "yarn",
@@ -22099,6 +22099,50 @@ async function getProxyAgent(input) {
   return new ProxyAgent(proxy);
 }
 
+// sources/nodeUtils.ts
+var import_os2 = __toESM(require("os"));
+function isNodeError(err) {
+  return !!err?.code;
+}
+function isExistError(err) {
+  return err.code === `EEXIST` || err.code === `ENOTEMPTY`;
+}
+function getEndOfLine(content) {
+  const matches = content.match(/\r?\n/g);
+  if (matches === null)
+    return import_os2.default.EOL;
+  const crlf = matches.filter((nl) => nl === `\r
+`).length;
+  const lf = matches.length - crlf;
+  return crlf > lf ? `\r
+` : `
+`;
+}
+function normalizeLineEndings(originalContent, newContent) {
+  return newContent.replace(/\r?\n/g, getEndOfLine(originalContent));
+}
+function getIndent(content) {
+  const indentMatch = content.match(/^[ \t]+/m);
+  if (indentMatch) {
+    return indentMatch[0];
+  } else {
+    return `  `;
+  }
+}
+function stripBOM(content) {
+  if (content.charCodeAt(0) === 65279) {
+    return content.slice(1);
+  } else {
+    return content;
+  }
+}
+function readPackageJson(content) {
+  return {
+    data: JSON.parse(stripBOM(content) || `{}`),
+    indent: getIndent(content)
+  };
+}
+
 // sources/corepackUtils.ts
 var YARN_SWITCH_REGEX = /[/\\]switch[/\\]bin[/\\]/;
 function isYarnSwitchPath(p) {
@@ -22156,7 +22200,7 @@ async function findInstalledVersion(installTarget, descriptor) {
   try {
     cacheDirectory = await import_fs4.default.promises.opendir(installFolder);
   } catch (error) {
-    if (error.code === `ENOENT`) {
+    if (isNodeError(error) && error.code === `ENOENT`) {
       return null;
     } else {
       throw error;
@@ -22228,9 +22272,13 @@ async function download(installTarget, url, algo, binPath = null) {
     try {
       await renameSafe(downloadedBin, outputFile);
     } catch (err) {
-      if (err?.code === `ENOENT`)
+      if (isNodeError(err) && err.code === `ENOENT`)
         throw new Error(`Cannot locate '${binPath}' in downloaded tarball`, { cause: err });
-      throw err;
+      if (isNodeError(err) && isExistError(err)) {
+        await import_fs4.default.promises.rm(downloadedBin);
+      } else {
+        throw err;
+      }
     }
     const fileStream = import_fs4.default.createReadStream(outputFile);
     hash = fileStream.pipe((0, import_crypto2.createHash)(algo));
@@ -22258,7 +22306,7 @@ async function installVersion(installTarget, locator, { spec }) {
       bin: corepackData.bin
     };
   } catch (err) {
-    if (err?.code !== `ENOENT`) {
+    if (isNodeError(err) && err.code !== `ENOENT`) {
       throw err;
     }
   }
@@ -22336,8 +22384,8 @@ async function installVersion(installTarget, locator, { spec }) {
   try {
     await renameSafe(tmpFolder, installFolder);
   } catch (err) {
-    if (err.code === `ENOTEMPTY` || // On Windows the error code is EPERM so we check if it is a directory
-    err.code === `EPERM` && (await import_fs4.default.promises.stat(installFolder)).isDirectory()) {
+    if (isNodeError(err) && (isExistError(err) || // On Windows the error code is EPERM so we check if it is a directory
+    err.code === `EPERM` && (await import_fs4.default.promises.stat(installFolder)).isDirectory())) {
       log(`Another instance of corepack installed ${locator.name}@${locator.reference}`);
       await import_fs4.default.promises.rm(tmpFolder, { recursive: true, force: true });
     } else {
@@ -22376,7 +22424,7 @@ async function renameUnderWindows(oldPath, newPath) {
       await import_fs4.default.promises.rename(oldPath, newPath);
       break;
     } catch (err) {
-      if ((err.code === `ENOENT` || err.code === `EPERM`) && i < retries - 1) {
+      if (isNodeError(err) && (err.code === `ENOENT` || err.code === `EPERM`) && i < retries - 1) {
         await (0, import_promises2.setTimeout)(100 * 2 ** i);
         continue;
       } else {
@@ -22466,44 +22514,6 @@ var import_satisfies = __toESM(require_satisfies());
 var import_valid = __toESM(require_valid());
 var import_valid2 = __toESM(require_valid2());
 var import_util = require("util");
-
-// sources/nodeUtils.ts
-var import_os2 = __toESM(require("os"));
-function getEndOfLine(content) {
-  const matches = content.match(/\r?\n/g);
-  if (matches === null)
-    return import_os2.default.EOL;
-  const crlf = matches.filter((nl) => nl === `\r
-`).length;
-  const lf = matches.length - crlf;
-  return crlf > lf ? `\r
-` : `
-`;
-}
-function normalizeLineEndings(originalContent, newContent) {
-  return newContent.replace(/\r?\n/g, getEndOfLine(originalContent));
-}
-function getIndent(content) {
-  const indentMatch = content.match(/^[ \t]+/m);
-  if (indentMatch) {
-    return indentMatch[0];
-  } else {
-    return `  `;
-  }
-}
-function stripBOM(content) {
-  if (content.charCodeAt(0) === 65279) {
-    return content.slice(1);
-  } else {
-    return content;
-  }
-}
-function readPackageJson(content) {
-  return {
-    data: JSON.parse(stripBOM(content) || `{}`),
-    indent: getIndent(content)
-  };
-}
 
 // sources/types.ts
 var SupportedPackageManagers = /* @__PURE__ */ ((SupportedPackageManagers3) => {
@@ -23149,8 +23159,8 @@ var EnableCommand = class extends Command {
     const file = import_path7.default.join(installDirectory, binName);
     const symlink = import_path7.default.relative(installDirectory, import_path7.default.join(distFolder, `${binName}.js`));
     if (import_fs9.default.existsSync(file)) {
-      const currentSymlink = await import_fs9.default.promises.readlink(file);
-      if (binName.includes(`yarn`) && isYarnSwitchPath(await import_fs9.default.promises.realpath(file))) {
+      const currentSymlink = await import_fs9.default.promises.realpath(file);
+      if (binName.includes(`yarn`) && isYarnSwitchPath(currentSymlink)) {
         console.warn(`${binName} is already installed in ${file} and points to a Yarn Switch install - skipping`);
         return;
       }
